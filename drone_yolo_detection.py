@@ -1,76 +1,53 @@
+import cv2
 from djitellopy import Tello
 from time import sleep
+import logging
 
-def print_instructions():
-    print("===== Tello 키보드 조종 =====")
-    print("t : 이륙")
-    print("l : 착륙")
-    print("w : 앞으로 30cm")
-    print("s : 뒤로 30cm")
-    print("a : 왼쪽으로 30cm")
-    print("d : 오른쪽으로 30cm")
-    print("i : 위로 30cm")
-    print("o : 아래로 30cm")
-    print("q : 종료 (프로그램 끝)")
-    print("=============================")
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-def main():
-    drone = Tello()
-    drone.connect()
-    print(f"배터리 잔량: {drone.get_battery()}%")
 
-    has_taken_off = False
-    print_instructions()
+class TelloController:
+    def __init__(self):
+        self.drone = Tello()
+        self.drone.connect()
+        logging.info(f"배터리 잔량: {self.drone.get_battery()}%")
 
-    try:
-        while True:
-            cmd = input("명령 입력(t/l/w/s/a/d/i/o/q): ").strip().lower()
+        self.drone.streamon()
+        self.frame_reader = self.drone.get_frame_read()
+        self.frame_width, self.frame_height = 960, 720
+        self.running = True
 
-            if cmd == "t":
-                drone.takeoff()
-                has_taken_off = True
+    def run(self):
+        try:
+            logging.info("스트리밍 시작")
+            while self.running:
+                frame = self.frame_reader.frame
+                if frame is None:
+                    continue
 
-            elif cmd == "l":
-                drone.land()
-                has_taken_off = False
+                frame = cv2.resize(frame, (self.frame_width, self.frame_height))
+                cv2.imshow("Tello Stream", frame)
 
-            elif cmd == "w":
-                drone.move_forward(30)
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    self.running = False
+                    break
+                sleep(0.01)
 
-            elif cmd == "s":
-                drone.move_back(30)
+        except Exception as e:
+            logging.error(f"오류 발생: {e}")
+        finally:
+            self.cleanup()
 
-            elif cmd == "a":
-                drone.move_left(30)
+    def cleanup(self):
+        self.drone.streamoff()
+        self.drone.end()
+        cv2.destroyAllWindows()
+        logging.info("종료")
 
-            elif cmd == "d":
-                drone.move_right(30)
-
-            elif cmd == "i":
-                drone.move_up(30)
-
-            elif cmd == "o":
-                drone.move_down(30)
-
-            elif cmd == "q":
-                print("종료합니다.")
-                break
-
-            else:
-                print("알 수 없는 명령입니다. 다시 입력해주세요.")
-
-            sleep(0.1)
-
-    except Exception as e:
-        print(f"[오류] {e}")
-    finally:
-        if has_taken_off:
-            try:
-                drone.land()
-            except:
-                pass
-        drone.end()
-        print("프로그램 종료")
 
 if __name__ == "__main__":
-    main()
+    controller = TelloController()
+    controller.run()
